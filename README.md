@@ -2,6 +2,24 @@
 
 A simple MCP server for PostgreSQL with query filtering system.
 
+[![npm version](https://badge.fury.io/js/mcp-postgresql.svg)](https://badge.fury.io/js/mcp-postgresql)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+> **Repository**: [https://github.com/deadraid/mcp-postgresql](https://github.com/deadraid/mcp-postgresql)
+> **NPM Package**: [https://www.npmjs.com/package/mcp-postgresql](https://www.npmjs.com/package/mcp-postgresql)
+> **Author**: deadraid
+> **License**: MIT
+
+## Installation
+
+```bash
+# Install globally from npm
+npm install -g mcp-postgresql
+
+# Or use directly with npx (no installation needed)
+npx mcp-postgresql
+```
+
 ## Features
 
 - **3 tools**: `query`, `schema`, `tables`
@@ -10,34 +28,36 @@ A simple MCP server for PostgreSQL with query filtering system.
 - **Simple configuration**: Only through environment variables
 - **SSL support**: Full SSL/TLS configuration for secure connections
 - **URL connection**: Support for PostgreSQL connection strings
+- **Production ready**: Available on npm, used in production environments
+
+## Quick Start
+
+```bash
+# Install from npm (recommended)
+npm install -g mcp-postgresql
+
+# Or use directly with npx (no installation needed)
+npx mcp-postgresql
+```
 
 ## Installation
 
-### Local development
+### From npm (recommended)
 ```bash
+# Install globally from npm registry
+npm install -g mcp-postgresql
+
+# Or use directly with npx (no installation needed)
+npx mcp-postgresql
+```
+
+### From source (for development)
+```bash
+git clone https://github.com/deadraid/mcp-postgresql.git
+cd mcp-postgresql
 npm install
 npm run build
-```
-
-### Global installation
-```bash
-# Build the project first
-npm run build
-
-# Install globally
-npm install -g .
-
-# Or link for development
-npm link
-
-# Now you can use it from anywhere
-mcp-postgresql-server
-```
-
-### Using npx (recommended)
-```bash
-# No installation needed, runs directly
-npx mcp-postgresql-server
+npm link  # For development
 ```
 
 ## Usage
@@ -69,7 +89,7 @@ npx mcp-postgresql-server
 {
   "mcpServers": {
     "postgresql": {
-      "command": "mcp-postgresql-server",
+      "command": "mcp-postgresql",
       "env": {
         "POSTGRES_HOST": "localhost",
         "POSTGRES_PORT": "5432",
@@ -241,6 +261,12 @@ npm run dev
 # Lint
 npm run lint
 ```
+
+## Links
+
+- **NPM Package**: [https://www.npmjs.com/package/mcp-postgresql](https://www.npmjs.com/package/mcp-postgresql)
+- **GitHub Repository**: [https://github.com/deadraid/mcp-postgresql](https://github.com/deadraid/mcp-postgresql)
+- **Issues & Support**: [https://github.com/deadraid/mcp-postgresql/issues](https://github.com/deadraid/mcp-postgresql/issues)
 
 ## License
 
