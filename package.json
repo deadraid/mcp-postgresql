@@ -1,0 +1,70 @@
+{
+  "name": "mcp-postgresql",
+  "version": "1.0.0",
+  "description": "Simple MCP server for PostgreSQL with query filtering",
+  "type": "module",
+  "main": "dist/server/index.js",
+  "types": "dist/server/index.d.ts",
+  "bin": {
+    "mcp-postgresql-server": "dist/server/index.js"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/server/index.js",
+      "types": "./dist/server/index.d.ts"
+    }
+  },
+  "files": [
+    "dist/",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/server/index.js",
+    "clean": "rm -rf dist",
+    "lint": "eslint src --ext .ts --fix",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "postgresql",
+    "database",
+    "sql",
+    "ai-tools",
+    "agent-tools",
+    "claude-desktop",
+    "query-filtering"
+  ],
+  "author": "deadraid",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/deadraid/mcp-postgresql.git"
+  },
+  "bugs": {
+    "url": "https://github.com/deadraid/mcp-postgresql/issues"
+  },
+  "homepage": "https://github.com/deadraid/mcp-postgresql#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.17.5",
+    "pg": "8.16.3",
+    "zod": "4.1.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.1",
+    "@types/pg": "8.15.5",
+    "@typescript-eslint/eslint-plugin": "8.42.0",
+    "@typescript-eslint/parser": "8.42.0",
+    "eslint": "9.35.0",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-import": "2.32.0",
+    "eslint-plugin-prettier": "5.5.4",
+    "prettier": "3.6.2",
+    "typescript": "5.9.2"
+  }
+}
