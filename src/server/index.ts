@@ -3,168 +3,62 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import pg from 'pg';
-const { Pool } = pg;
+import { createConfig } from '../utils/config.js';
+import { getPool } from '../utils/database.js';
+import {
+  isQueryAllowed,
+  isTableHidden,
+  isColumnHidden,
+  maskSensitiveData,
+  filterTables,
+} from '../utils/sql-filter.js';
 
-type PoolType = InstanceType<typeof pg.Pool>;
+import type { Config } from '../utils/config.js';
 
-// Configuration - URL and SSL support
-const config = {
-  // URL has priority over individual parameters
-  url: process.env.POSTGRES_URL || '',
-  host: process.env.POSTGRES_HOST || 'localhost',
-  port: parseInt(process.env.POSTGRES_PORT || '5432'),
-  database: process.env.POSTGRES_DB || 'postgres',
-  user: process.env.POSTGRES_USER || 'postgres',
-  password: process.env.POSTGRES_PASSWORD || '',
-  // SSL settings - clean and readable
-  ssl: getSslConfig(),
-  queryLevel: process.env.POSTGRES_QUERY_LEVEL || 'readonly', // readonly, modify, ddl, custom
-  allowedCommands:
-    process.env.POSTGRES_ALLOWED_COMMANDS?.split(',').map((cmd) => cmd.trim().toUpperCase()) || [],
-};
-
-// Clean SSL configuration function
-function getSslConfig(): boolean | object | undefined {
-  const sslEnv = process.env.POSTGRES_SSL;
-  const sslCa = process.env.POSTGRES_SSL_CA;
-  const sslCert = process.env.POSTGRES_SSL_CERT;
-  const sslKey = process.env.POSTGRES_SSL_KEY;
-
-  // Simple boolean values
-  if (sslEnv === 'true') return true;
-  if (sslEnv === 'false') return false;
-
-  // Certificate-based SSL configuration
-  if (sslCa || sslCert || sslKey) {
-    return {
-      ca: sslCa,
-      cert: sslCert,
-      key: sslKey,
-      rejectUnauthorized: process.env.POSTGRES_SSL_REJECT_UNAUTHORIZED !== 'false',
-    };
-  }
-
-  // Default - no SSL
-  return undefined;
-}
-
-// Query levels and their permissions
-const QUERY_LEVELS = {
-  readonly: ['SELECT'],
-  modify: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'],
-  ddl: ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'DROP', 'ALTER', 'TRUNCATE'],
-  custom: config.allowedCommands,
-} as const;
-
-type QueryLevel = keyof typeof QUERY_LEVELS;
-
-// Database connection pool
-let pool: PoolType | null = null;
-
-function getPool(): PoolType {
-  if (!pool) {
-    if (config.url) {
-      // Use connection string URL
-      pool = new Pool({
-        connectionString: config.url,
-        ssl: config.ssl,
-        max: 5,
-        idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 10000,
-      });
-    } else {
-      // Use individual connection parameters
-      pool = new Pool({
-        host: config.host,
-        port: config.port,
-        database: config.database,
-        user: config.user,
-        password: config.password,
-        ssl: config.ssl,
-        max: 5,
-        idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 10000,
-      });
-    }
-  }
-  return pool;
-}
-
-// SQL command detection with better parsing
-function getSqlCommand(sql: string): string {
-  // Remove comments and normalize
-  let cleanSql = sql
-    .replace(/--.*$/gm, '') // Remove single-line comments
-    .replace(/\/\*[\s\S]*?\*\//g, '') // Remove multi-line comments
-    .trim()
-    .toUpperCase();
-
-  // Extract first meaningful word
-  const words = cleanSql.split(/\s+/);
-  const firstWord = words[0];
-
-  const commands = [
-    'SELECT',
-    'INSERT',
-    'UPDATE',
-    'DELETE',
-    'CREATE',
-    'DROP',
-    'ALTER',
-    'TRUNCATE',
-    'GRANT',
-    'REVOKE',
-    'BEGIN',
-    'COMMIT',
-    'ROLLBACK',
-    'EXPLAIN',
-    'ANALYZE',
-    'VACUUM',
-    'COPY',
-  ];
-
-  return firstWord && commands.includes(firstWord) ? firstWord : 'UNKNOWN';
-}
-
-// Check if query is allowed
-function isQueryAllowed(sql: string): boolean {
-  const command = getSqlCommand(sql);
-  const allowedCommands = QUERY_LEVELS[config.queryLevel as QueryLevel] || QUERY_LEVELS.readonly;
-  return (allowedCommands as string[]).includes(command);
-}
+// Configuration
+const config: Config = createConfig();
 
 // Tool implementations
 async function executeQuery(
-  sql: string
+  sql: string,
+  config: Config
 ): Promise<{ content: Array<{ type: string; text: string }> }> {
-  if (!isQueryAllowed(sql)) {
+  if (!isQueryAllowed(sql, config)) {
     return {
       content: [
         {
           type: 'text',
-          text: `Query not allowed. Current level: ${config.queryLevel}. Allowed commands: ${QUERY_LEVELS[config.queryLevel as QueryLevel].join(', ')}`,
+          text: `Query not allowed. Current level: ${config.queryLevel}. Allowed commands: ${config.allowedCommands.join(', ')}`,
         },
       ],
     };
   }
 
-  const client = await getPool().connect();
+  const pool = getPool(config);
+  const client = await pool.connect();
   try {
     const result = await client.query(sql);
+
+    // Apply data masking and filtering
+    const { rows: maskedRows, fields: visibleFields } = maskSensitiveData(
+      result.rows as Record<string, unknown>[],
+      result.fields,
+      config
+    );
+
     return {
       content: [
         {
           type: 'text',
-          text: `Query executed successfully. Rows: ${result.rowCount}`,
+          text: `Query executed successfully. Rows: ${maskedRows.length}`,
         },
         {
           type: 'text',
           text: JSON.stringify(
             {
-              rows: result.rows,
-              rowCount: result.rowCount,
-              fields: result.fields.map((field) => ({
+              rows: maskedRows,
+              rowCount: maskedRows.length,
+              fields: visibleFields.map((field) => ({
                 name: field.name,
                 type: field.dataTypeID,
               })),
@@ -190,9 +84,11 @@ async function executeQuery(
 }
 
 async function getSchema(
-  table?: string
+  table: string | undefined,
+  config: Config
 ): Promise<{ content: Array<{ type: string; text: string }> }> {
-  const client = await getPool().connect();
+  const pool = getPool(config);
+  const client = await pool.connect();
   try {
     let query = `
       SELECT 
@@ -208,23 +104,50 @@ async function getSchema(
     `;
 
     if (table) {
+      // Check if table is hidden
+      if (isTableHidden(table, config)) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Table "${table}" is hidden due to security settings.`,
+            },
+          ],
+        };
+      }
+
       query += ` AND table_name = $1`;
       const tableResult = await client.query(query, [table]);
+
+      // Filter out hidden columns
+      const visibleColumns = tableResult.rows.filter(
+        (row: Record<string, unknown>) => !isColumnHidden(row.column_name as string, config)
+      );
+
       return {
         content: [
           {
             type: 'text',
-            text: JSON.stringify({ schema: tableResult.rows }, null, 2),
+            text: JSON.stringify({ schema: visibleColumns }, null, 2),
           },
         ],
       };
     }
+
     const result = await client.query(query);
+
+    // Filter out hidden tables and columns
+    const visibleSchema = result.rows.filter((row: Record<string, unknown>) => {
+      const tableName = row.table_name as string;
+      const columnName = row.column_name as string;
+      return !isTableHidden(tableName, config) && !isColumnHidden(columnName, config);
+    });
+
     return {
       content: [
         {
           type: 'text',
-          text: JSON.stringify({ schema: result.rows }, null, 2),
+          text: JSON.stringify({ schema: visibleSchema }, null, 2),
         },
       ],
     };
@@ -242,8 +165,11 @@ async function getSchema(
   }
 }
 
-async function getTables(): Promise<{ content: Array<{ type: string; text: string }> }> {
-  const client = await getPool().connect();
+async function getTables(
+  config: Config
+): Promise<{ content: Array<{ type: string; text: string }> }> {
+  const pool = getPool(config);
+  const client = await pool.connect();
   try {
     const result = await client.query(`
       SELECT 
@@ -254,11 +180,15 @@ async function getTables(): Promise<{ content: Array<{ type: string; text: strin
       WHERE table_schema NOT IN ('information_schema', 'pg_catalog')
       ORDER BY table_schema, table_name
     `);
+
+    // Filter out hidden tables
+    const visibleTables = filterTables(result.rows as Record<string, unknown>[], config);
+
     return {
       content: [
         {
           type: 'text',
-          text: JSON.stringify({ tables: result.rows }, null, 2),
+          text: JSON.stringify({ tables: visibleTables }, null, 2),
         },
       ],
     };
@@ -281,7 +211,8 @@ const server = new Server(
   {
     name: 'mcp-postgresql',
     version: '1.0.0',
-    description: 'MCP server for PostgreSQL database operations with query filtering',
+    description:
+      'MCP server for PostgreSQL database operations with query filtering and data masking',
     categories: ['database', 'sql', 'postgresql'],
   },
   {
@@ -300,7 +231,7 @@ server.setRequestHandler(ListToolsRequestSchema, () => {
       {
         name: 'query',
         description: `
-Execute SQL queries with safety restrictions.
+Execute SQL queries with safety restrictions and data masking.
 
 **Best for:** Running SELECT queries to explore data, getting database information.
 **Not recommended for:** When you need to modify data (use 'modify' query level).
@@ -315,7 +246,7 @@ Execute SQL queries with safety restrictions.
   }
 }
 \`\`\`
-**Returns:** Query results with rows, row count, and field information.
+**Returns:** Query results with rows, row count, and field information. Sensitive data is masked.
 `,
         inputSchema: {
           type: 'object',
@@ -331,7 +262,7 @@ Execute SQL queries with safety restrictions.
       {
         name: 'schema',
         description: `
-Get database schema information.
+Get database schema information with security filtering.
 
 **Best for:** Exploring table structures, understanding database design.
 **Not recommended for:** When you need actual data (use query tool instead).
@@ -346,7 +277,7 @@ Get database schema information.
   }
 }
 \`\`\`
-**Returns:** Table schema with columns, data types, and constraints.
+**Returns:** Table schema with columns, data types, and constraints. Hidden tables/columns are filtered out.
 `,
         inputSchema: {
           type: 'object',
@@ -361,7 +292,7 @@ Get database schema information.
       {
         name: 'tables',
         description: `
-List all tables in the database.
+List all tables in the database with security filtering.
 
 **Best for:** Getting an overview of available tables, exploring database structure.
 **Not recommended for:** When you need detailed table information (use schema tool).
@@ -374,7 +305,7 @@ List all tables in the database.
   "arguments": {}
 }
 \`\`\`
-**Returns:** List of all tables with their schemas and types.
+**Returns:** List of all tables with their schemas and types. Hidden tables are filtered out.
 `,
         inputSchema: {
           type: 'object',
@@ -404,16 +335,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             isError: true,
           };
         }
-        return await executeQuery(sql);
+        return await executeQuery(sql, config);
       }
 
       case 'schema': {
         const { table } = args as { table?: string };
-        return await getSchema(table);
+        return await getSchema(table, config);
       }
 
       case 'tables': {
-        return await getTables();
+        return await getTables(config);
       }
 
       default:
