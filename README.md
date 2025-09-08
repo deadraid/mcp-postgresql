@@ -24,6 +24,8 @@ npx mcp-postgresql
 
 - **3 tools**: `query`, `schema`, `tables`
 - **Query filtering**: 4 access levels (readonly, modify, ddl, custom)
+- **Data masking**: Automatic masking of sensitive fields (passwords, emails, etc.)
+- **Security filtering**: Hide tables and columns by configuration
 - **Universal tool**: One `query` instead of multiple separate tools
 - **Simple configuration**: Only through environment variables
 - **SSL support**: Full SSL/TLS configuration for secure connections
@@ -172,6 +174,38 @@ npm link  # For development
 - `ddl` - All operations including CREATE, DROP, ALTER
 - `custom` - Custom commands via `POSTGRES_ALLOWED_COMMANDS`
 
+### Data Masking and Security Filtering
+
+The server automatically masks sensitive data and can hide specific tables/columns:
+
+#### Default masked fields (values replaced with `***`):
+- `password`, `passwd`, `pwd`
+- `secret`, `token`, `api_key`, `apikey`
+- `private_key`, `privatekey`
+- `credit_card`, `creditcard`, `card_number`, `cardnumber`
+- `ssn`, `social_security`, `tax_id`
+- `email`, `phone`, `address`
+
+#### Configuration options:
+```json
+{
+  "mcpServers": {
+    "postgresql": {
+      "command": "npx",
+      "args": ["mcp-postgresql-server"],
+      "env": {
+        "POSTGRES_URL": "postgresql://user:password@host:port/database",
+        "POSTGRES_QUERY_LEVEL": "readonly",
+        "POSTGRES_DATA_MASKING": "true", // Enable data masking (default: true)
+        "POSTGRES_HIDDEN_TABLES": "secret_table,internal_logs", // Hide specific tables
+        "POSTGRES_HIDDEN_COLUMNS": "internal_id,debug_info", // Hide specific columns
+        "POSTGRES_SENSITIVE_FIELDS": "custom_field,internal_code" // Additional fields to mask
+      }
+    }
+  }
+}
+```
+
 ### Usage Examples
 
 #### Execute Query
@@ -183,6 +217,27 @@ npm link  # For development
   }
 }
 ```
+**Note**: Sensitive fields (passwords, emails, etc.) will be automatically masked with `***`
+
+#### View Schema
+```json
+{
+  "name": "schema",
+  "arguments": {
+    "table": "users"
+  }
+}
+```
+**Note**: Hidden tables and columns will be filtered out from results
+
+#### List Tables
+```json
+{
+  "name": "tables",
+  "arguments": {}
+}
+```
+**Note**: Hidden tables will be filtered out from results
 
 #### View Schema
 ```json
@@ -228,6 +283,10 @@ npm link  # For development
 |----------|-------------|---------|
 | `POSTGRES_QUERY_LEVEL` | Access level | `readonly` |
 | `POSTGRES_ALLOWED_COMMANDS` | Custom allowed commands | `""` |
+| `POSTGRES_DATA_MASKING` | Enable data masking (`true`/`false`) | `true` |
+| `POSTGRES_HIDDEN_TABLES` | Comma-separated list of tables to hide | `""` |
+| `POSTGRES_HIDDEN_COLUMNS` | Comma-separated list of columns to hide | `""` |
+| `POSTGRES_SENSITIVE_FIELDS` | Additional fields to mask (comma-separated) | `""` |
 
 ### SSL Examples
 
