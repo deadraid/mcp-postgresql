@@ -47,9 +47,9 @@ export function getSslConfig(): boolean | object | undefined {
 
 // Query levels and their permissions
 export const QUERY_LEVELS = {
-  readonly: ['SELECT'],
-  modify: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'],
-  ddl: ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'DROP', 'ALTER', 'TRUNCATE'],
+  readonly: ['SELECT', 'WITH'],
+  modify: ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'WITH'],
+  ddl: ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'DROP', 'ALTER', 'TRUNCATE', 'WITH'],
   custom: [] as string[], // Will be populated from config
 } as const;
 

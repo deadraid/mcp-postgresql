@@ -31,7 +31,14 @@ export function getSqlCommand(sql: string): string {
     'ANALYZE',
     'VACUUM',
     'COPY',
+    'WITH',
   ];
+
+  // Handle WITH clauses - they should be treated as SELECT for permission purposes
+  // since WITH clauses typically contain SELECT statements
+  if (firstWord === 'WITH') {
+    return 'WITH';
+  }
 
   return firstWord && commands.includes(firstWord) ? firstWord : 'UNKNOWN';
 }

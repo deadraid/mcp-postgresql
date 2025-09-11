@@ -4,6 +4,23 @@ import { Config } from './config.js';
 
 type PoolType = InstanceType<typeof pg.Pool>;
 
+// Configure PostgreSQL type parsers to handle large numbers as strings
+// Only convert types that can lose precision in JavaScript to strings
+const PRECISION_TYPES = {
+  BIGINT: 20, // int8 - can lose precision
+  BIGSERIAL: 20, // same as BIGINT
+  NUMERIC: 1700, // numeric - arbitrary precision
+  DECIMAL: 1700, // same as NUMERIC
+};
+
+// Override type parsers for precision-sensitive types to return strings
+// This prevents precision loss for large integers and decimals
+Object.values(PRECISION_TYPES).forEach((oid) => {
+  pg.types.setTypeParser(oid, (val) => {
+    return val; // Return as string to preserve precision
+  });
+});
+
 // Database connection pool
 let pool: PoolType | null = null;
 
