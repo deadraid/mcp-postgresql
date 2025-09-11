@@ -1,6 +1,6 @@
 {
   "name": "mcp-postgresql",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Simple MCP server for PostgreSQL with query filtering",
   "type": "module",
   "main": "dist/server/index.js",
@@ -54,15 +54,15 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.17.5",
+    "@modelcontextprotocol/sdk": "1.18.0",
     "pg": "8.16.3",
-    "zod": "4.1.5"
+    "zod": "4.1.8"
   },
   "devDependencies": {
     "@types/node": "^24.3.1",
     "@types/pg": "8.15.5",
-    "@typescript-eslint/eslint-plugin": "8.42.0",
-    "@typescript-eslint/parser": "8.42.0",
+    "@typescript-eslint/eslint-plugin": "8.43.0",
+    "@typescript-eslint/parser": "8.43.0",
     "eslint": "9.35.0",
     "eslint-config-prettier": "10.1.8",
     "eslint-plugin-import": "2.32.0",
