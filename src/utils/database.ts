@@ -4,21 +4,31 @@ import { Config } from './config.js';
 
 type PoolType = InstanceType<typeof pg.Pool>;
 
-// Configure PostgreSQL type parsers to handle large numbers as strings
-// Only convert types that can lose precision in JavaScript to strings
-const PRECISION_TYPES = {
-  BIGINT: 20, // int8 - can lose precision
-  BIGSERIAL: 20, // same as BIGINT
-  NUMERIC: 1700, // numeric - arbitrary precision
-  DECIMAL: 1700, // same as NUMERIC
-};
+// PostgreSQL OIDs for types requiring string conversion
+const STRING_TYPES = new Set([20, 1700]); // BIGINT, NUMERIC/DECIMAL
 
-// Override type parsers for precision-sensitive types to return strings
-// This prevents precision loss for large integers and decimals
-Object.values(PRECISION_TYPES).forEach((oid) => {
-  pg.types.setTypeParser(oid, (val) => {
-    return val; // Return as string to preserve precision
-  });
+// Configure type parsers for precision preservation
+STRING_TYPES.forEach((oid) => pg.types.setTypeParser(oid, (val) => val));
+
+// Safe JSON parsing with large number handling
+pg.types.setTypeParser(114, (val) => {
+  try {
+    return JSON.parse(val, (_, v) =>
+      typeof v === 'number' && v > Number.MAX_SAFE_INTEGER ? v.toString() : v
+    );
+  } catch {
+    return val;
+  }
+});
+
+pg.types.setTypeParser(3802, (val) => {
+  try {
+    return JSON.parse(val, (_, v) =>
+      typeof v === 'number' && v > Number.MAX_SAFE_INTEGER ? v.toString() : v
+    );
+  } catch {
+    return val;
+  }
 });
 
 // Database connection pool
