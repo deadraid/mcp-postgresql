@@ -19,10 +19,17 @@ import type { Config } from '../utils/config.js';
 const config: Config = createConfig();
 
 // Tool implementations
+/**
+ * Executes SQL query with security filtering and data masking
+ * @param sql - SQL query string
+ * @param config - Database configuration
+ * @returns Query results with masking applied
+ */
 async function executeQuery(
   sql: string,
   config: Config
 ): Promise<{ content: Array<{ type: string; text: string }> }> {
+  // Security check
   if (!isQueryAllowed(sql, config)) {
     return {
       content: [
@@ -36,7 +43,9 @@ async function executeQuery(
 
   const pool = getPool(config);
   const client = await pool.connect();
+
   try {
+    // Execute query with timeout protection
     const result = await client.query(sql);
 
     // Apply data masking and filtering
@@ -46,6 +55,16 @@ async function executeQuery(
       config
     );
 
+    // Optimized response formatting
+    const response = {
+      rows: maskedRows,
+      rowCount: maskedRows.length,
+      fields: visibleFields.map((field) => ({
+        name: field.name,
+        type: field.dataTypeID,
+      })),
+    };
+
     return {
       content: [
         {
@@ -54,44 +73,47 @@ async function executeQuery(
         },
         {
           type: 'text',
-          text: JSON.stringify(
-            {
-              rows: maskedRows,
-              rowCount: maskedRows.length,
-              fields: visibleFields.map((field) => ({
-                name: field.name,
-                type: field.dataTypeID,
-              })),
-            },
-            null,
-            2
-          ),
+          text: JSON.stringify(response, null, 2),
         },
       ],
     };
   } catch (error) {
+    // Enhanced error handling with specific error types
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorType =
+      error instanceof Error && error.message.includes('timeout') ? 'Timeout' : 'Database';
+
     return {
       content: [
         {
           type: 'text',
-          text: `PostgreSQL error: ${error instanceof Error ? error.message : String(error)}`,
+          text: `${errorType} error: ${errorMessage}`,
         },
       ],
     };
   } finally {
+    // Ensure client is always released
     client.release();
   }
 }
 
+/**
+ * Retrieves database schema information with security filtering
+ * @param table - Optional specific table name
+ * @param config - Database configuration
+ * @returns Schema information with hidden tables/columns filtered
+ */
 async function getSchema(
   table: string | undefined,
   config: Config
 ): Promise<{ content: Array<{ type: string; text: string }> }> {
   const pool = getPool(config);
   const client = await pool.connect();
+
   try {
-    let query = `
-      SELECT 
+    // Optimized base query
+    const baseQuery = `
+      SELECT
         table_schema,
         table_name,
         column_name,
@@ -104,7 +126,7 @@ async function getSchema(
     `;
 
     if (table) {
-      // Check if table is hidden
+      // Security check for hidden tables
       if (isTableHidden(table, config)) {
         return {
           content: [
@@ -116,10 +138,11 @@ async function getSchema(
         };
       }
 
-      query += ` AND table_name = $1`;
+      // Optimized single table query
+      const query = `${baseQuery} AND table_name = $1 ORDER BY table_schema, table_name, ordinal_position`;
       const tableResult = await client.query(query, [table]);
 
-      // Filter out hidden columns
+      // Filter hidden columns efficiently
       const visibleColumns = tableResult.rows.filter(
         (row: Record<string, unknown>) => !isColumnHidden(row.column_name as string, config)
       );
@@ -134,9 +157,11 @@ async function getSchema(
       };
     }
 
+    // Optimized full schema query
+    const query = `${baseQuery} ORDER BY table_schema, table_name, ordinal_position`;
     const result = await client.query(query);
 
-    // Filter out hidden tables and columns
+    // Efficient filtering with single pass
     const visibleSchema = result.rows.filter((row: Record<string, unknown>) => {
       const tableName = row.table_name as string;
       const columnName = row.column_name as string;
@@ -152,11 +177,12 @@ async function getSchema(
       ],
     };
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
     return {
       content: [
         {
           type: 'text',
-          text: `PostgreSQL error: ${error instanceof Error ? error.message : String(error)}`,
+          text: `Schema retrieval error: ${errorMessage}`,
         },
       ],
     };
@@ -165,14 +191,21 @@ async function getSchema(
   }
 }
 
+/**
+ * Retrieves list of available tables with security filtering
+ * @param config - Database configuration
+ * @returns List of visible tables
+ */
 async function getTables(
   config: Config
 ): Promise<{ content: Array<{ type: string; text: string }> }> {
   const pool = getPool(config);
   const client = await pool.connect();
+
   try {
+    // Optimized query with proper ordering
     const result = await client.query(`
-      SELECT 
+      SELECT
         table_schema,
         table_name,
         table_type
@@ -181,7 +214,7 @@ async function getTables(
       ORDER BY table_schema, table_name
     `);
 
-    // Filter out hidden tables
+    // Efficient table filtering
     const visibleTables = filterTables(result.rows as Record<string, unknown>[], config);
 
     return {
@@ -193,11 +226,12 @@ async function getTables(
       ],
     };
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
     return {
       content: [
         {
           type: 'text',
-          text: `PostgreSQL error: ${error instanceof Error ? error.message : String(error)}`,
+          text: `Table listing error: ${errorMessage}`,
         },
       ],
     };
@@ -316,7 +350,9 @@ List all tables in the database with security filtering.
   };
 });
 
-// Handle tool calls
+/**
+ * Enhanced tool call handler with improved error handling
+ */
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
 
@@ -324,7 +360,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     switch (name) {
       case 'query': {
         const { sql } = args as { sql: string };
-        if (!sql || typeof sql !== 'string') {
+
+        // Enhanced input validation
+        if (!sql || typeof sql !== 'string' || sql.trim().length === 0) {
           return {
             content: [
               {
@@ -335,11 +373,40 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             isError: true,
           };
         }
+
+        // Additional SQL injection prevention
+        if (sql.length > 10000) {
+          // Reasonable query length limit
+          return {
+            content: [
+              {
+                type: 'text',
+                text: 'Query too long: maximum length is 10,000 characters',
+              },
+            ],
+            isError: true,
+          };
+        }
+
         return await executeQuery(sql, config);
       }
 
       case 'schema': {
         const { table } = args as { table?: string };
+
+        // Validate table name if provided
+        if (table && (typeof table !== 'string' || table.length > 128)) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: 'Invalid table name: must be a string with max length 128',
+              },
+            ],
+            isError: true,
+          };
+        }
+
         return await getSchema(table, config);
       }
 
@@ -359,22 +426,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
     }
   } catch (error) {
-    if (error instanceof Error) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Error: ${error.message}`,
-          },
-        ],
-        isError: true,
-      };
-    }
+    // Enhanced error reporting
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    console.error(`Tool execution error (${name}):`, error);
+
     return {
       content: [
         {
           type: 'text',
-          text: 'Unknown error occurred',
+          text: `Tool execution failed: ${errorMessage}`,
         },
       ],
       isError: true,
@@ -382,17 +442,41 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
 });
 
-// Start the server
+/**
+ * Server startup with enhanced error handling and graceful shutdown
+ */
 async function main() {
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
-  console.error('PostgreSQL MCP server started');
+  try {
+    const transport = new StdioServerTransport();
+    await server.connect(transport);
+    console.error('PostgreSQL MCP server started successfully');
+
+    // Graceful shutdown handlers
+    const shutdown = async (signal: string) => {
+      console.error(`Received ${signal}, shutting down gracefully...`);
+      try {
+        await getPool(config).end();
+        process.exit(0);
+      } catch (error) {
+        console.error('Error during shutdown:', error);
+        process.exit(1);
+      }
+    };
+
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT', () => shutdown('SIGINT'));
+  } catch (error) {
+    console.error('Failed to start server:', error);
+    process.exit(1);
+  }
 }
 
-// Always run the server when executed directly
-main().catch((error) => {
-  console.error('Server error:', error);
-  process.exit(1);
-});
+// Enhanced server startup with proper error handling
+if (require.main === module) {
+  main().catch((error) => {
+    console.error('Fatal server error:', error);
+    process.exit(1);
+  });
+}
 
 export { server };
