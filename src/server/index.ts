@@ -353,6 +353,9 @@ List all tables in the database with security filtering.
 /**
  * Enhanced tool call handler with improved error handling
  */
+/**
+ * Enhanced tool call handler with improved error handling
+ */
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
 
@@ -445,38 +448,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 /**
  * Server startup with enhanced error handling and graceful shutdown
  */
+// Start the server
 async function main() {
-  try {
-    const transport = new StdioServerTransport();
-    await server.connect(transport);
-    console.error('PostgreSQL MCP server started successfully');
-
-    // Graceful shutdown handlers
-    const shutdown = async (signal: string) => {
-      console.error(`Received ${signal}, shutting down gracefully...`);
-      try {
-        await getPool(config).end();
-        process.exit(0);
-      } catch (error) {
-        console.error('Error during shutdown:', error);
-        process.exit(1);
-      }
-    };
-
-    process.on('SIGTERM', () => shutdown('SIGTERM'));
-    process.on('SIGINT', () => shutdown('SIGINT'));
-  } catch (error) {
-    console.error('Failed to start server:', error);
-    process.exit(1);
-  }
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+  console.error('PostgreSQL MCP server started');
 }
 
-// Enhanced server startup with proper error handling
-if (require.main === module) {
-  main().catch((error) => {
-    console.error('Fatal server error:', error);
-    process.exit(1);
-  });
-}
+// Always run the server when executed directly
+main().catch((error) => {
+  console.error('Server error:', error);
+  process.exit(1);
+});
 
 export { server };
